@@ -4,9 +4,23 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/supabase/types";
 
 /**
- * Refreshes the Supabase auth session on every request. Plumbing only
- * — no route protection/redirect rules yet. Those belong to Phase 1+
- * once project access permissions (project_members, roles) exist.
+ * Paths reachable without a session. Everything else redirects to
+ * /sign-in. No role/permission checks here yet (Phase 1 scope is
+ * authentication only) — just "is there a session at all."
+ */
+const PUBLIC_PATHS = ["/sign-in", "/auth/callback"];
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+}
+
+/**
+ * Refreshes the Supabase auth session on every request and enforces
+ * the sign-in wall. This is the single source of truth for "is this
+ * request authenticated" — no route protection logic should be
+ * duplicated elsewhere.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -32,7 +46,22 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  const publicPath = isPublicPath(pathname);
+
+  if (!user && !publicPath) {
+    const signInUrl = new URL("/sign-in", request.url);
+    signInUrl.searchParams.set("redirectTo", pathname);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  if (user && pathname === "/sign-in") {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
 
   return supabaseResponse;
 }
