@@ -4,14 +4,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/supabase/types";
 
 /**
- * Paths reachable without a session. Everything else redirects to
- * /sign-in. No role/permission checks here yet (Phase 1 scope is
- * authentication only) — just "is there a session at all."
+ * Paths reachable without a session at all.
  */
 const PUBLIC_PATHS = ["/sign-in", "/auth/callback"];
 
-function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some(
+/**
+ * Paths reachable with a session even if the user has no `profiles`
+ * row yet (pending access) — must include everywhere sign-out lives,
+ * or a pending user could never leave.
+ */
+const PENDING_ACCESS_ALLOWED_PATHS = ["/pending-access", "/auth"];
+
+function matchesPath(pathname: string, paths: string[]) {
+  return paths.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 }
@@ -51,7 +56,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const publicPath = isPublicPath(pathname);
+  const publicPath = matchesPath(pathname, PUBLIC_PATHS);
 
   if (!user && !publicPath) {
     const signInUrl = new URL("/sign-in", request.url);
@@ -61,6 +66,24 @@ export async function updateSession(request: NextRequest) {
 
   if (user && pathname === "/sign-in") {
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  if (user && !publicPath) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const pendingAllowed = matchesPath(pathname, PENDING_ACCESS_ALLOWED_PATHS);
+
+    if (!profile && !pendingAllowed) {
+      return NextResponse.redirect(new URL("/pending-access", request.url));
+    }
+
+    if (profile && pathname === "/pending-access") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   return supabaseResponse;
