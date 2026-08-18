@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { GenerationTestControls } from "@/app/(app)/projects/[id]/generation-test-controls";
 import { Card } from "@/components/design-system/card";
+import { GenerationProgress } from "@/components/design-system/generation-progress";
 import { LockedTab } from "@/components/design-system/locked-tab";
 import { StatusBadge } from "@/components/design-system/status-badge";
-import { requireProfile } from "@/lib/auth/session";
+import { canManageProfiles, requireProfile } from "@/lib/auth/session";
+import type { GenerationState } from "@/lib/generation/state-machine";
 import { projectStatusBadge, type ProjectStatus } from "@/lib/projects/status";
 import { createClient } from "@/lib/supabase/server";
 
@@ -23,19 +26,20 @@ const CONTENT_TYPE_LABEL: Record<string, string> = {
  * the tab bar in its locked state. Real tab content is later phases.
  */
 export default async function ProjectWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
-  await requireProfile();
+  const profile = await requireProfile();
   const { id } = await params;
   const supabase = await createClient();
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, content_type, market, target_query, status")
+    .select("id, name, content_type, market, target_query, status, generation_state")
     .eq("id", id)
     .maybeSingle();
 
   if (!project) notFound();
 
   const badge = projectStatusBadge(project.status as ProjectStatus);
+  const generationState = project.generation_state as GenerationState;
 
   return (
     <div className="flex h-full flex-col">
@@ -62,13 +66,23 @@ export default async function ProjectWorkspacePage({ params }: { params: Promise
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-10">
+      <div className="flex flex-1 gap-6 overflow-y-auto p-10">
         <Card className="max-w-xl">
           <p className="text-sm text-text-secondary">
             Strategy Brief generation isn&rsquo;t implemented yet — coming in a later phase. Research and website
             knowledge upload for this project are complete.
           </p>
         </Card>
+
+        <div className="flex w-64 shrink-0 flex-col gap-4">
+          <Card>
+            <div className="mb-3 text-xs font-semibold text-text-secondary">Generation pipeline</div>
+            <GenerationProgress state={generationState} />
+          </Card>
+          {canManageProfiles(profile.role) ? (
+            <GenerationTestControls projectId={project.id} state={generationState} />
+          ) : null}
+        </div>
       </div>
     </div>
   );

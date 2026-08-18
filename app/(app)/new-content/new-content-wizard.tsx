@@ -1,5 +1,6 @@
 "use client";
 
+import { unstable_rethrow } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -172,7 +173,11 @@ export function NewContentWizard({
       try {
         await finalizeProject(projectId!, { businessProfileId, brandProfileId, instructions });
       } catch (e) {
-        // finalizeProject redirects on success — an error here is real.
+        // finalizeProject calls redirect() on success, which throws a
+        // NEXT_REDIRECT control-flow error by design — let that
+        // propagate so Next.js can perform the navigation, instead of
+        // treating it as an application error.
+        unstable_rethrow(e);
         setSaving(false);
         alert(e instanceof Error ? e.message : "Couldn't create project.");
       }

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { canManageProfiles, requireProfile } from "@/lib/auth/session";
 import { parseMarkdownResearch } from "@/lib/ingestion/markdown-research-parser";
 import { createClient } from "@/lib/supabase/server";
+import type { Database, Json } from "@/lib/supabase/types";
 import { FILE_LIMITS, type ProjectFileType } from "@/lib/validation/file-limits";
 
 async function assertCanCreate() {
@@ -16,7 +17,7 @@ async function assertCanCreate() {
 }
 
 export interface BasicsInput {
-  contentType: "blog_post" | "landing_page" | "comparison_page" | "guide";
+  contentType: Database["public"]["Enums"]["content_type"];
   topic: string;
   targetQuery: string;
   market: string;
@@ -143,7 +144,7 @@ export async function uploadResearchFile(projectId: string, formData: FormData) 
     if (sources.length > 0) {
       const { error: sourcesError } = await supabase
         .from("research_sources")
-        .insert(sources.map((s) => ({ research_package_id: pkg.id, type: s.type, payload: s.payload })));
+        .insert(sources.map((s) => ({ research_package_id: pkg.id, type: s.type, payload: s.payload as Json })));
       if (sourcesError) throw new Error(sourcesError.message);
     }
 
@@ -164,7 +165,7 @@ export async function uploadResearchFile(projectId: string, formData: FormData) 
       .from("research_packages")
       .update({
         status: "parsed",
-        parsed_summary: summary,
+        parsed_summary: summary as unknown as Json,
         topic_conflict_flag: topicConflict,
         topic_conflict_details: topicConflict
           ? { projectTopic: project?.primary_topic ?? null, researchTopic: summary.topic }

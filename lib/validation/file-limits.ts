@@ -1,10 +1,27 @@
+import type { Database } from "@/lib/supabase/types";
+
 /**
  * Configurable upload validation limits (Architecture V1 §4).
  * Extension + MIME type are both checked where applicable — neither
  * alone is trusted, since uploaded content is untrusted input
  * (engineering spec §19).
  */
-export const FILE_LIMITS = {
+
+export type ProjectFileType = Database["public"]["Enums"]["project_file_type"];
+
+interface FileLimit {
+  maxBytes: number;
+  extensions: string[];
+  mimeTypes: string[];
+}
+
+/**
+ * Typed as Record<ProjectFileType, ...> (DB enum → app), not the
+ * reverse — the compiler requires this object to have exactly one
+ * entry per real project_file_type value, so an enum addition/removal
+ * is a compile error here instead of a silent gap.
+ */
+export const FILE_LIMITS: Record<ProjectFileType, FileLimit> = {
   research_csv: {
     maxBytes: 25 * 1024 * 1024,
     extensions: [".csv"],
@@ -33,6 +50,4 @@ export const FILE_LIMITS = {
     extensions: [".csv"],
     mimeTypes: ["text/csv", "application/vnd.ms-excel"],
   },
-} as const;
-
-export type ProjectFileType = keyof typeof FILE_LIMITS;
+};

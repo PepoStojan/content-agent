@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/types";
 
-export type AppRole = "team_lead" | "seo_manager" | "content_writer";
+export type AppRole = Database["public"]["Enums"]["user_role"];
 
 export interface CurrentProfile {
   userId: string;

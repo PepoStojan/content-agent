@@ -1,20 +1,6 @@
-export type ProjectStatus =
-  | "draft"
-  | "ingesting"
-  | "ready_for_brief"
-  | "brief_generated"
-  | "brief_changes_requested"
-  | "brief_approved"
-  | "blueprint_generated"
-  | "blueprint_changes_requested"
-  | "blueprint_approved"
-  | "generating_content"
-  | "content_ready"
-  | "qa_failed"
-  | "qa_warning"
-  | "ready_for_export"
-  | "exported"
-  | "failed";
+import type { Database } from "@/lib/supabase/types";
+
+export type ProjectStatus = Database["public"]["Enums"]["project_status"];
 
 export type StatusTone = "waiting" | "progress" | "success" | "warning" | "danger" | "neutral";
 

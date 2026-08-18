@@ -9,18 +9,16 @@
  * NOT parsed by this module — those stay simulated elsewhere.
  */
 
+import type { Database } from "@/lib/supabase/types";
+
+/**
+ * `type` is the full DB `research_source_type` enum (18 members), not
+ * hand-limited to the ~10 this parser currently emits — this parser
+ * is a partial producer of a database-defined vocabulary, not the
+ * owner of it.
+ */
 export interface ParsedResearchSource {
-  type:
-    | "topic"
-    | "primary_query"
-    | "secondary_queries"
-    | "location"
-    | "organic_results"
-    | "parsed_pages"
-    | "failed_urls"
-    | "content_gaps"
-    | "serp_features"
-    | "research_warnings";
+  type: Database["public"]["Enums"]["research_source_type"];
   payload: unknown;
 }
 
