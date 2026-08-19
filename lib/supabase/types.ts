@@ -1,12 +1,3 @@
-/**
- * Generated from the live database schema:
- *   npx supabase gen types typescript --linked > lib/supabase/types.ts
- * Do not hand-edit. Re-run after any migration that changes a table
- * or enum shape — this file is the actual source of truth for what
- * the database will accept, catching schema/code drift at compile
- * time instead of at runtime.
- */
-
 export type Json =
   | string
   | number
@@ -165,6 +156,7 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          brief_version_id: string
           content_blueprint_id: string
           created_at: string
           created_by: string | null
@@ -180,6 +172,7 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          brief_version_id: string
           content_blueprint_id: string
           created_at?: string
           created_by?: string | null
@@ -195,6 +188,7 @@ export type Database = {
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          brief_version_id?: string
           content_blueprint_id?: string
           created_at?: string
           created_by?: string | null
@@ -208,6 +202,13 @@ export type Database = {
           version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "blueprint_versions_brief_version_id_fkey"
+            columns: ["brief_version_id"]
+            isOneToOne: false
+            referencedRelation: "brief_versions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "blueprint_versions_content_blueprint_id_fkey"
             columns: ["content_blueprint_id"]

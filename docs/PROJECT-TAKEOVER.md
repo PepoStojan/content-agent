@@ -235,11 +235,26 @@ Preserved verbatim in intent from the migrations' own comments — these are har
 
 ## NEXT ACTION
 
-The last completed planning artifact is `docs/architecture/phase-4-3-strategy-brief-plan.md` (untracked, not yet committed) — a full Phase 4.3 (Strategy Brief Generation) implementation plan, covering the RLS gap, the `completeGeneration()` API-split requirement, and the provenance split between `brief_topics` and `brief_versions`' AI-generated fields documented above.
+**Phase 4.3 (Strategy Brief Generation) is complete, committed, and live-verified end to end** (commit `cd7fd73`, "feat: complete strategy brief generation") — real Anthropic calls, full three-phase Generation Engine lifecycle, deterministic `brief_topics`/AI provenance split, internal-link whitelisting, em-dash/brand-compliance validation, Brief Review UI (render, Approve, Request Changes, Regenerate, version immutability), and a deterministic-date-formatting hydration fix. See `docs/architecture/phase-4-3-strategy-brief-plan.md` for the full design record and its "Locked decisions" table (Request changes, the `completeGeneration()` API split, regeneration-after-approval) — all implemented as specified.
 
-**All three previously-open Phase 4.3 decisions are now locked (2026-08-18)**, recorded in the plan doc's "Locked decisions" table:
-- **Request changes:** approved → `needs_revision`; never auto-starts generation; user must edit inputs/instructions then explicitly Regenerate; the approved version stays immutable.
-- **Generation API split:** `recordProviderCompleted()` → `recordArtifactPersisted()` → `completeGeneration()`, approved as the required D1 persistence lifecycle for `lib/generation/engine.ts`.
-- **Regeneration after approval:** allowed; always creates a new `brief_versions` row starting at `status='draft'` requiring separate approval; the prior approved version is never mutated.
+**Phase 4.4 (Content Blueprint Generation) planning, infrastructure, data contract, and real generation are all complete and verified (2026-08-19); only the UI remains.** See `docs/architecture/phase-4-4-blueprint-plan.md` for the full design record and its "Locked decisions" table. Not yet committed to git — see GIT STATUS below.
 
-No implementation has started. To resume work: set `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` (`claude-sonnet-4-6`) in `.env.local`, then begin Phase 4.3 implementation starting with the brief-tables RLS migration (plan §12).
+**Infrastructure (migrations applied, types regenerated):**
+- `blueprint_versions.brief_version_id` (`uuid not null references brief_versions(id)`) is live in the database, migration `20260824000001_phase4_4_blueprint_lineage.sql`. A `before update` trigger makes this column immutable after insert — confirmed live by attempting to `UPDATE` it, which was correctly rejected.
+- Blueprint RLS policies (`content_blueprints`, `blueprint_versions`, `blueprint_nodes`) are live, migration `20260824000002_phase4_4_blueprint_rls.sql`, reusing the existing `can_access_project`/`current_app_role` helpers only.
+- `lib/supabase/types.ts` has been regenerated from the live schema and includes `brief_version_id` in `Row`/`Insert`/`Update`/`Relationships` for `blueprint_versions` — confirmed by direct inspection, not assumed.
+
+**Data contract (`lib/generation/blueprint/`, all typechecked/linted/built clean):** `input.ts` (requires the caller to supply the exact approved `brief_versions.id`, never resolves "current Brief" dynamically), `schema.ts` (recursive Zod tree via `z.lazy`, plus `normalizeBlueprintToolOutput`), `nodes.ts` (tree flattening to `blueprint_nodes`' flat row shape), `entities.ts` (BD3), `word-count.ts` (BD4), `internal-links.ts` (per-node whitelist), `persist.ts` (head+version+children+flip-last, `brief_version_id` set once at insert), `generate-blueprint.ts` (orchestrator, BD2 server-side regeneration gate). Prompt: `lib/ai/prompts/blueprint/v1.ts`.
+
+**Real generation proven** against project `64f3a6aa-3090-457a-ae54-3a1d506a87d2`, Brief version `c7d88c1b-69cf-485a-a54f-8b4dad04c3ec` (the latest approved), model `claude-sonnet-4-6`: 22 `blueprint_nodes` in a coherent 3-level hierarchy, 0 fabricated internal links, entity traceability passed against a 36-entry Brief-derived pool, word-count sanity passed (1815 words, blog_post range 800–3000), root node's H1 correctly overridden to the Brief's exact approved H1, `blueprint_versions.brief_version_id` exactly equals the Brief version used, full accurate telemetry (`provider_request_id`, token counts, `finish_reason: tool_use`, all four lifecycle timestamps in order).
+
+**Three real bugs found and fixed live, not from a manual review:**
+1. `max_tokens: 8192` (reused unchanged from Brief) truncated Blueprint's larger tree output mid-JSON — raised to `16000`.
+2. Even under forced tool-use, Claude sometimes returns the recursive `root` value as a JSON-encoded **string** rather than a nested object — `normalizeBlueprintToolOutput()` detects and unstringifies this before Zod validation.
+3. `writingNotes`/`evidenceRequirement` legitimately instruct "don't mention pricing" and were false-flagged by the forbidden-phrase check — excluded from `assertBrandCompliance` (same fix class as Brief's `thingsToAvoid` exclusion), kept in the em-dash check.
+
+**Locked Blueprint decisions** (`docs/architecture/phase-4-4-blueprint-plan.md`'s "Locked decisions" table): BD1 (exact Brief-version lineage, immutable), BD2 (no AI per-node regeneration — whole-Blueprint regeneration only; manual non-AI node editing is a separate, still-unresolved question), BD3 (entity traceability is a hard generation failure), BD4 (word-count sanity is WARN-level only).
+
+**Current state:** Blueprint generation itself is complete and verified end to end. **No Blueprint UI exists yet** — no render, no Approve/Request Changes/Regenerate actions, no version history. The Blueprint tab is still hardcoded `locked` in `app/(app)/projects/[id]/page.tsx`, unchanged since Phase 4.3.
+
+To resume work: build the Blueprint Review UI — render the current Blueprint (node tree + inspector, matching Design V1's frozen layout where compatible), Approve, Request Changes, Regenerate, version history — mirroring the Brief Review tab's already-proven pattern (`app/(app)/projects/[id]/brief-review.tsx`/`brief-actions.ts`) exactly, while preserving Blueprint's own lineage/immutability guarantees (BD1/BD2) and keeping Content Editor/QA/Export locked until Blueprint approval (unchanged, not touched by this next step).
