@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { GenerationTestControls } from "@/app/(app)/projects/[id]/generation-test-controls";
+import { BriefReview } from "@/app/(app)/projects/[id]/brief-review";
 import { Card } from "@/components/design-system/card";
 import { GenerationProgress } from "@/components/design-system/generation-progress";
 import { LockedTab } from "@/components/design-system/locked-tab";
@@ -41,6 +42,43 @@ export default async function ProjectWorkspacePage({ params }: { params: Promise
   const badge = projectStatusBadge(project.status as ProjectStatus);
   const generationState = project.generation_state as GenerationState;
 
+  const { data: contentBrief } = await supabase
+    .from("content_briefs")
+    .select("id, current_version_id")
+    .eq("project_id", project.id)
+    .maybeSingle();
+
+  const { data: currentVersion } = contentBrief?.current_version_id
+    ? await supabase.from("brief_versions").select("*").eq("id", contentBrief.current_version_id).single()
+    : { data: null };
+
+  const [{ data: topics }, { data: internalLinks }, { data: previousVersions }] = currentVersion
+    ? await Promise.all([
+        supabase.from("brief_topics").select("id, label").eq("brief_version_id", currentVersion.id),
+        supabase.from("brief_internal_links").select("id, anchor_text, target_url").eq("brief_version_id", currentVersion.id),
+        supabase
+          .from("brief_versions")
+          .select("id, version, status, created_at")
+          .eq("project_id", project.id)
+          .order("version", { ascending: false }),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }];
+
+  let latestFailedError: { type: string; message: string } | null = null;
+  if (!currentVersion) {
+    const { data: latestRun } = await supabase
+      .from("generation_runs")
+      .select("status, error")
+      .eq("project_id", project.id)
+      .eq("type", "brief_generate")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestRun?.status === "failed" && latestRun.error) {
+      latestFailedError = latestRun.error as { type: string; message: string };
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="px-10 pt-6">
@@ -67,12 +105,16 @@ export default async function ProjectWorkspacePage({ params }: { params: Promise
       </div>
 
       <div className="flex flex-1 gap-6 overflow-y-auto p-10">
-        <Card className="max-w-xl">
-          <p className="text-sm text-text-secondary">
-            Strategy Brief generation isn&rsquo;t implemented yet — coming in a later phase. Research and website
-            knowledge upload for this project are complete.
-          </p>
-        </Card>
+        <BriefReview
+          projectId={project.id}
+          canManage={canManageProfiles(profile.role)}
+          projectStatus={project.status as ProjectStatus}
+          currentVersion={currentVersion}
+          topics={topics ?? []}
+          internalLinks={internalLinks ?? []}
+          previousVersions={previousVersions ?? []}
+          latestFailedError={latestFailedError}
+        />
 
         <div className="flex w-64 shrink-0 flex-col gap-4">
           <Card>

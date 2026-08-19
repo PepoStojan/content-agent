@@ -92,7 +92,15 @@ export async function startGeneration(input: StartGenerationInput): Promise<Star
   return { generationRunId: data.id, status: "started" };
 }
 
-// --- completeGeneration --------------------------------------------------
+// --- recordProviderCompleted → recordArtifactPersisted → completeGeneration
+//
+// D1's three-phase persistence lifecycle, split into three write-once
+// calls (Phase 4.3 plan §0.1/L2), replacing the Phase 4.2 skeleton's
+// single atomic completeGeneration(). A real stage now persists a
+// version row *between* recordProviderCompleted and
+// recordArtifactPersisted, and each phase's timestamp is set exactly
+// where it's reached — see docs/architecture/phase-4-2-generation-engine.md
+// §5a for the phase model this implements.
 
 export interface GenerationTelemetry {
   provider: string;
@@ -104,42 +112,33 @@ export interface GenerationTelemetry {
   finishReason: string;
 }
 
-export interface CompleteGenerationInput {
+export interface RecordProviderCompletedInput {
   generationRunId: string;
   projectId: string;
+  /** Raw provider response location (Storage), written durably before any parse is attempted — the core D1 guarantee. */
+  outputRef: Record<string, unknown>;
   telemetry: GenerationTelemetry;
-  outputRef?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 }
 
 /**
- * Marks a run provider_completed → artifact_persisted → completed in
- * one call. A real stage (Phase 4.3+) that needs to persist a version
- * row *between* receiving the provider response and calling this
- * would call it in two steps instead — this single-call form is
- * correct for the skeleton, where no artifact is actually being
- * written yet.
+ * Call immediately after the provider responds and its raw output has
+ * been durably written to `outputRef`, before any structured-output
+ * parse or artifact insert is attempted. Marks the run
+ * `provider_completed` and records the full telemetry set (D7) — the
+ * model has been called and charged at this point, so this data must
+ * never be lost even if persistence fails afterward.
  */
-export async function completeGeneration(input: CompleteGenerationInput): Promise<void> {
+export async function recordProviderCompleted(input: RecordProviderCompletedInput): Promise<void> {
   await assertCanRunGenerations();
   const supabase = await createClient();
 
-  const { data: run, error: fetchError } = await supabase
-    .from("generation_runs")
-    .select("started_at")
-    .eq("id", input.generationRunId)
-    .single();
-  if (fetchError) throw new Error(fetchError.message);
-
-  const now = new Date();
-  const startedAt = run.started_at ? new Date(run.started_at) : now;
-  const durationMs = now.getTime() - startedAt.getTime();
   const totalTokens = input.telemetry.inputTokens + input.telemetry.outputTokens;
 
   const { error } = await supabase
     .from("generation_runs")
     .update({
-      status: "completed",
+      status: "provider_completed",
       provider: input.telemetry.provider,
       model: input.telemetry.model,
       provider_request_id: input.telemetry.providerRequestId ?? null,
@@ -148,17 +147,94 @@ export async function completeGeneration(input: CompleteGenerationInput): Promis
       total_tokens: totalTokens,
       estimated_cost_usd: input.telemetry.estimatedCostUsd,
       finish_reason: input.telemetry.finishReason,
-      output_ref: (input.outputRef as Json) ?? null,
+      output_ref: input.outputRef as Json,
       metadata: (input.metadata as Json) ?? {},
-      provider_completed_at: now.toISOString(),
-      artifact_persisted_at: now.toISOString(),
-      completed_at: now.toISOString(),
-      duration_ms: durationMs,
+      provider_completed_at: new Date().toISOString(),
     })
     .eq("id", input.generationRunId);
   if (error) throw new Error(error.message);
 
   revalidatePath(`/projects/${input.projectId}`);
+}
+
+export interface RecordArtifactPersistedInput {
+  generationRunId: string;
+  projectId: string;
+}
+
+/**
+ * Call immediately after the stage's version row (and any children,
+ * and the head-flip) has been fully inserted. Marks the run
+ * `artifact_persisted` — from this point on, recovery never needs to
+ * touch the provider again (docs/architecture/phase-4-2-generation-engine.md §5a).
+ */
+export async function recordArtifactPersisted(input: RecordArtifactPersistedInput): Promise<void> {
+  await assertCanRunGenerations();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("generation_runs")
+    .update({
+      status: "artifact_persisted",
+      artifact_persisted_at: new Date().toISOString(),
+    })
+    .eq("id", input.generationRunId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/projects/${input.projectId}`);
+}
+
+export interface CompleteGenerationInput {
+  generationRunId: string;
+  projectId: string;
+}
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Shared final flip, `artifact_persisted` → `completed` — the only
+ * bookkeeping step left once a version row already exists. Used by
+ * both completeGeneration() and recoverGeneration()'s
+ * artifact_persisted branch, so there is exactly one implementation
+ * of this transition (Phase 4.3 plan §0.1).
+ */
+async function finalizeCompletion(
+  supabase: SupabaseServerClient,
+  generationRunId: string,
+  projectId: string,
+): Promise<void> {
+  const { data: run, error: fetchError } = await supabase
+    .from("generation_runs")
+    .select("started_at")
+    .eq("id", generationRunId)
+    .single();
+  if (fetchError) throw new Error(fetchError.message);
+
+  const now = new Date();
+  const startedAt = run.started_at ? new Date(run.started_at) : now;
+
+  const { error } = await supabase
+    .from("generation_runs")
+    .update({
+      status: "completed",
+      completed_at: now.toISOString(),
+      duration_ms: now.getTime() - startedAt.getTime(),
+    })
+    .eq("id", generationRunId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+/**
+ * Final mechanical flip: `artifact_persisted` → `completed`. No
+ * longer accepts telemetry — that's fully captured by
+ * recordProviderCompleted before this is ever called.
+ */
+export async function completeGeneration(input: CompleteGenerationInput): Promise<void> {
+  await assertCanRunGenerations();
+  const supabase = await createClient();
+  await finalizeCompletion(supabase, input.generationRunId, input.projectId);
 }
 
 // --- failGeneration --------------------------------------------------------
@@ -247,13 +323,7 @@ export async function recoverGeneration(generationRunId: string): Promise<Recove
   const now = new Date();
 
   if (run.status === "artifact_persisted") {
-    const startedAt = run.started_at ? new Date(run.started_at) : now;
-    const { error } = await supabase
-      .from("generation_runs")
-      .update({ status: "completed", completed_at: now.toISOString(), duration_ms: now.getTime() - startedAt.getTime() })
-      .eq("id", generationRunId);
-    if (error) throw new Error(error.message);
-    revalidatePath(`/projects/${run.project_id}`);
+    await finalizeCompletion(supabase, generationRunId, run.project_id);
     return { generationRunId, action: "completed", status: "completed" };
   }
 
