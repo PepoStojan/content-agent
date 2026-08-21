@@ -1,9 +1,4 @@
-import {
-  PIPELINE_STAGES,
-  pipelineStageForState,
-  type GenerationState,
-  type PipelineStage,
-} from "@/lib/generation/state-machine";
+import { PIPELINE_STAGES, type PipelineStage } from "@/lib/generation/state-machine";
 import { cn } from "@/lib/utils";
 
 const STAGE_LABEL: Record<PipelineStage, string> = {
@@ -18,14 +13,22 @@ const STAGE_LABEL: Record<PipelineStage, string> = {
 /**
  * Phase 4.1 addition — Design V1 has no vertical pipeline progress
  * view (its Project Workspace uses the horizontal tab bar instead,
- * which stays as-is). This is new, additive surface area showing the
- * finer-grained generation_state, not a replacement for the tabs.
- * Purely visual: reads state, renders it, triggers nothing.
+ * which stays as-is). This is new, additive surface area, not a
+ * replacement for the tabs. Purely visual: reads a stage, renders it,
+ * triggers nothing.
+ *
+ * As of 2026-08-20, the caller passes an already-derived
+ * `currentStage`/`failed` pair (`lib/generation/derive-pipeline-stage.ts`,
+ * computed from real Brief/Blueprint/Content/QA/Export data) instead
+ * of a raw `generation_state` value — `generation_state` was found to
+ * be stale for real projects (only ever advanced by the Phase 4.1
+ * dev-test harness, never by real generation code). This component
+ * itself is otherwise unchanged: it was always just "render whatever
+ * stage/failed pair I'm given," so the fix lives entirely at the call
+ * site, not here.
  */
-export function GenerationProgress({ state }: { state: GenerationState }) {
-  const currentStage = pipelineStageForState(state);
+export function GenerationProgress({ currentStage, failed = false }: { currentStage: PipelineStage; failed?: boolean }) {
   const currentIndex = PIPELINE_STAGES.indexOf(currentStage);
-  const failed = state === "failed";
 
   return (
     <div className="flex flex-col" data-slot="generation-progress">
