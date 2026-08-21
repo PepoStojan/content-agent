@@ -780,6 +780,8 @@ export type Database = {
           file_name: string
           format: string
           id: string
+          mime_type: string
+          size_bytes: number
           storage_path: string
         }
         Insert: {
@@ -788,6 +790,8 @@ export type Database = {
           file_name: string
           format: string
           id?: string
+          mime_type: string
+          size_bytes: number
           storage_path: string
         }
         Update: {
@@ -796,6 +800,8 @@ export type Database = {
           file_name?: string
           format?: string
           id?: string
+          mime_type?: string
+          size_bytes?: number
           storage_path?: string
         }
         Relationships: [
@@ -813,10 +819,13 @@ export type Database = {
           blueprint_version_id: string | null
           brief_version_id: string | null
           completed_at: string | null
+          error: Json | null
           formats: Json
           generation_run_id: string | null
           id: string
           project_id: string
+          qa_bypassed: boolean
+          qa_report_id: string | null
           requested_at: string | null
           requested_by: string | null
           status: Database["public"]["Enums"]["export_status"]
@@ -825,10 +834,13 @@ export type Database = {
           blueprint_version_id?: string | null
           brief_version_id?: string | null
           completed_at?: string | null
+          error?: Json | null
           formats?: Json
           generation_run_id?: string | null
           id?: string
           project_id: string
+          qa_bypassed?: boolean
+          qa_report_id?: string | null
           requested_at?: string | null
           requested_by?: string | null
           status?: Database["public"]["Enums"]["export_status"]
@@ -837,10 +849,13 @@ export type Database = {
           blueprint_version_id?: string | null
           brief_version_id?: string | null
           completed_at?: string | null
+          error?: Json | null
           formats?: Json
           generation_run_id?: string | null
           id?: string
           project_id?: string
+          qa_bypassed?: boolean
+          qa_report_id?: string | null
           requested_at?: string | null
           requested_by?: string | null
           status?: Database["public"]["Enums"]["export_status"]
@@ -872,6 +887,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exports_qa_report_id_fkey"
+            columns: ["qa_report_id"]
+            isOneToOne: false
+            referencedRelation: "qa_reports"
             referencedColumns: ["id"]
           },
         ]
@@ -927,6 +949,7 @@ export type Database = {
         Row: {
           artifact_persisted_at: string | null
           attempt_number: number
+          blueprint_node_id: string | null
           completed_at: string | null
           created_at: string
           created_by: string | null
@@ -958,6 +981,7 @@ export type Database = {
         Insert: {
           artifact_persisted_at?: string | null
           attempt_number?: number
+          blueprint_node_id?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -989,6 +1013,7 @@ export type Database = {
         Update: {
           artifact_persisted_at?: string | null
           attempt_number?: number
+          blueprint_node_id?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -1018,6 +1043,13 @@ export type Database = {
           workflow_run_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "generation_runs_blueprint_node_id_fkey"
+            columns: ["blueprint_node_id"]
+            isOneToOne: false
+            referencedRelation: "blueprint_nodes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "generation_runs_organization_id_fkey"
             columns: ["organization_id"]
@@ -1329,32 +1361,45 @@ export type Database = {
       qa_findings: {
         Row: {
           category: Database["public"]["Enums"]["qa_category"]
+          content_version_id: string | null
           created_at: string
           id: string
           method: Database["public"]["Enums"]["qa_method"]
           note: string | null
           qa_report_id: string
+          quote: string | null
           status: Database["public"]["Enums"]["qa_status"]
         }
         Insert: {
           category: Database["public"]["Enums"]["qa_category"]
+          content_version_id?: string | null
           created_at?: string
           id?: string
           method: Database["public"]["Enums"]["qa_method"]
           note?: string | null
           qa_report_id: string
+          quote?: string | null
           status: Database["public"]["Enums"]["qa_status"]
         }
         Update: {
           category?: Database["public"]["Enums"]["qa_category"]
+          content_version_id?: string | null
           created_at?: string
           id?: string
           method?: Database["public"]["Enums"]["qa_method"]
           note?: string | null
           qa_report_id?: string
+          quote?: string | null
           status?: Database["public"]["Enums"]["qa_status"]
         }
         Relationships: [
+          {
+            foreignKeyName: "qa_findings_content_version_id_fkey"
+            columns: ["content_version_id"]
+            isOneToOne: false
+            referencedRelation: "content_versions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "qa_findings_qa_report_id_fkey"
             columns: ["qa_report_id"]
@@ -1401,31 +1446,37 @@ export type Database = {
         Row: {
           blueprint_version_id: string | null
           brief_version_id: string | null
+          evaluated_categories: Database["public"]["Enums"]["qa_category"][]
           generation_run_id: string | null
           id: string
           overall_status: Database["public"]["Enums"]["qa_status"] | null
           project_id: string
           run_at: string
+          skipped_categories: Database["public"]["Enums"]["qa_category"][]
           triggered_by: string | null
         }
         Insert: {
           blueprint_version_id?: string | null
           brief_version_id?: string | null
+          evaluated_categories?: Database["public"]["Enums"]["qa_category"][]
           generation_run_id?: string | null
           id?: string
           overall_status?: Database["public"]["Enums"]["qa_status"] | null
           project_id: string
           run_at?: string
+          skipped_categories?: Database["public"]["Enums"]["qa_category"][]
           triggered_by?: string | null
         }
         Update: {
           blueprint_version_id?: string | null
           brief_version_id?: string | null
+          evaluated_categories?: Database["public"]["Enums"]["qa_category"][]
           generation_run_id?: string | null
           id?: string
           overall_status?: Database["public"]["Enums"]["qa_status"] | null
           project_id?: string
           run_at?: string
+          skipped_categories?: Database["public"]["Enums"]["qa_category"][]
           triggered_by?: string | null
         }
         Relationships: [

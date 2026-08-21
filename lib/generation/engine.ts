@@ -37,6 +37,16 @@ export interface StartGenerationInput {
   inputRef?: Record<string, unknown>;
   /** Set when this call is a user-triggered regenerate of a prior run. */
   retryOfGenerationRun?: string;
+  /**
+   * Section-level generation identity for `content_generate` (CD3,
+   * docs/architecture/phase-4-5-content-generation-plan.md). Omitted
+   * for every other generation type — the DB lock's `coalesce(...)`
+   * (migration 20260825000001) treats a missing value the same as an
+   * explicit `null`, preserving the original project+type-only guard
+   * for non-content generations without this function needing to know
+   * which types care about it.
+   */
+  blueprintNodeId?: string;
 }
 
 export interface StartGenerationResult {
@@ -49,7 +59,11 @@ export interface StartGenerationResult {
  * partial unique index (D2) is the actual duplicate guard — this
  * function just turns the resulting constraint violation into a
  * clear, non-error result instead of a raw Postgres error reaching
- * the caller.
+ * the caller. Since migration 20260825000001 (CD3), that index is
+ * keyed on (project_id, type, blueprint_node_id), so passing
+ * `blueprintNodeId` scopes the guard to one Blueprint section instead
+ * of the whole project — omit it for every generation type that has
+ * no notion of a section.
  */
 export async function startGeneration(input: StartGenerationInput): Promise<StartGenerationResult> {
   const profile = await assertCanRunGenerations();
@@ -73,6 +87,7 @@ export async function startGeneration(input: StartGenerationInput): Promise<Star
       type: input.type,
       status: "running",
       input_ref: (input.inputRef as Json) ?? null,
+      blueprint_node_id: input.blueprintNodeId ?? null,
       attempt_number: attemptNumber,
       retry_of_generation_run: input.retryOfGenerationRun ?? null,
       started_at: new Date().toISOString(),
